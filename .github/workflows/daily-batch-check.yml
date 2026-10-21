@@ -1,0 +1,42 @@
+name: Daily batch price check
+
+on:
+  schedule:
+    - cron: "30 1 * * *"   # every day 07:00 IST (01:30 UTC)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "test = quick read-only check, report = full read-only run, fix = full run that fixes batch selling prices"
+        type: choice
+        options: [test, report, fix]
+        default: test
+
+permissions:
+  contents: read
+
+# never run two checks at the same time (Zoho blocks parallel requests)
+concurrency:
+  group: zoho-batch-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run batch price check
+        env:
+          # manual run -> the mode you pick; scheduled run -> repo variable SCHEDULED_MODE (default: report)
+          RUN_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || vars.SCHEDULED_MODE || 'report' }}
+          ZOHO_ORG_ID: "60088845017"
+          ZOHO_API_BASE: ${{ vars.ZOHO_API_BASE }}
+          ZOHO_CLIENT_ID: ${{ secrets.ZOHO_CLIENT_ID }}
+          ZOHO_CLIENT_SECRET: ${{ secrets.ZOHO_CLIENT_SECRET }}
+          ZOHO_REFRESH_TOKEN: ${{ secrets.ZOHO_REFRESH_TOKEN }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          MAX_REQUESTS: ${{ vars.MAX_REQUESTS || '1400' }}
+        run: python3 check_batches.py
